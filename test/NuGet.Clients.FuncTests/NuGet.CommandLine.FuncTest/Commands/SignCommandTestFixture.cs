@@ -16,6 +16,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
     public class SignCommandTestFixture : IDisposable
     {
         private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
+        private const int _trustedCertChainLength = 3;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
         private TrustedTestCert<TestCertificate> _trustedTestCertWithInvalidEku;
@@ -96,6 +97,19 @@ namespace NuGet.CommandLine.FuncTest.Commands
             }
         }
 
+        public TrustedTestCert<TestCertificate> TrustedTestCertificateWithChain
+        {
+            get
+            {
+                if (_trustedTestCertChain == null)
+                {
+                    _trustedTestCertChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
+                }
+
+                return _trustedTestCertChain.Last();
+            }
+        }
+
         public IList<ISignatureVerificationProvider> TrustProviders
         {
             get
@@ -145,6 +159,9 @@ namespace NuGet.CommandLine.FuncTest.Commands
         {
             _trustedTestCert?.Dispose();
             _trustedTestCertWithInvalidEku?.Dispose();
+            _trustedTestCertExpired?.Dispose();
+            _trustedTestCertNotYetValid?.Dispose();
+            (_trustedTestCertChain as List<TrustedTestCert<TestCertificate>>)?.ForEach(c => c.Dispose());
         }
     }
 }

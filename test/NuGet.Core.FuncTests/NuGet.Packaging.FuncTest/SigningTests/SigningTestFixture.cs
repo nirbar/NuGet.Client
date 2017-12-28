@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using NuGet.Packaging.Signing;
 using Test.Utility.Signing;
@@ -15,8 +16,10 @@ namespace NuGet.Packaging.FuncTest
     public class SigningTestFixture : IDisposable
     {
         private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
+        private const int _trustedCertChainLength = 3;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
+        private IList<TrustedTestCert<TestCertificate>> _trustedTestCertChain;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
 
@@ -35,6 +38,19 @@ namespace NuGet.Packaging.FuncTest
                 }
 
                 return _trustedTestCert;
+            }
+        }
+
+        public TrustedTestCert<TestCertificate> TrustedTestCertificateWithChain
+        {
+            get
+            {
+                if (_trustedTestCertChain == null)
+                {
+                    _trustedTestCertChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
+                }
+
+                return _trustedTestCertChain.Last();
             }
         }
 
@@ -73,6 +89,7 @@ namespace NuGet.Packaging.FuncTest
         public void Dispose()
         {
             _trustedTestCert?.Dispose();
+            (_trustedTestCertChain as List<TrustedTestCert<TestCertificate>>)?.ForEach(c => c.Dispose());
         }
     }
 }

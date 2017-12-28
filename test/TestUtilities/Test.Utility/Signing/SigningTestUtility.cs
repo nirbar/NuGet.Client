@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 
 #if IS_DESKTOP
@@ -93,13 +94,46 @@ namespace Test.Utility.Signing
         };
 
         /// <summary>
+        /// Generates a list of certificates representing a chain of certificates.
+        /// The first certificate is the root certificate stored in StoreName.Root and StoreLocation.LocalMachine.
+        /// THe last certificate is the leaf certificate stored in StoreName.TrustedPeople and StoreLocation.LocalMachine.
+        /// Please dispose all the certificates in the list after use.
+        /// </summary>
+        /// <param name="length">Length of the chain.</param>
+        /// <returns>List of certificates representing a chain of certificates.</returns>
+        public static IList<TrustedTestCert<TestCertificate>> GenerateCertificateChain(int length)
+        {
+            var certChain = new List<TrustedTestCert<TestCertificate>>();
+
+            var actionGenerator = SigningTestUtility.CertificateModificationGeneratorForCodeSigningEkuCert;
+            TrustedTestCert<TestCertificate> issuer = null;
+
+            for (var i = 0; i < length; i++)
+            {
+                if (issuer == null)
+                {
+                    issuer = TestCertificate.Generate(actionGenerator).WithTrust(StoreName.Root, StoreLocation.LocalMachine);
+                }
+                else
+                {
+                    issuer = TestCertificate.Generate(actionGenerator, issuer.Source.Cert.SubjectName.Name).WithTrust(StoreName.TrustedPeople, StoreLocation.LocalMachine);
+                }
+
+                certChain.Add(issuer);
+            }
+
+            return certChain;
+        }
+
+        /// <summary>
         /// Create a self signed certificate with bouncy castle.
         /// </summary>
         public static X509Certificate2 GenerateCertificate(
             string subjectName,
             Action<X509V3CertificateGenerator> modifyGenerator,
             string signatureAlgorithm = "SHA256WITHRSA",
-            int publicKeyLength = 2048)
+            int publicKeyLength = 2048,
+            string issuerDN = null)
         {
             if (string.IsNullOrEmpty(subjectName))
             {
@@ -115,7 +149,7 @@ namespace Test.Utility.Signing
             // Create cert
             var certGen = new X509V3CertificateGenerator();
             certGen.SetSubjectDN(new X509Name($"CN={subjectName}"));
-            certGen.SetIssuerDN(new X509Name($"CN={subjectName}"));
+            certGen.SetIssuerDN(new X509Name($"CN={issuerDN ?? subjectName}"));
 
             certGen.SetNotAfter(DateTime.UtcNow.Add(TimeSpan.FromHours(1)));
             certGen.SetNotBefore(DateTime.UtcNow.Subtract(TimeSpan.FromHours(1)));
