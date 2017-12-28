@@ -143,7 +143,6 @@ namespace NuGet.Packaging.Signing
             var timestampRequest = new TimestampRequest
             {
                 SignatureValue = signature.GetBytes(),
-                Certificate = request.Certificate,
                 SigningSpec = SigningSpecifications.V1,
                 TimestampHashAlgorithm = request.TimestampHashAlgorithm
             };

@@ -14,6 +14,8 @@ namespace NuGet.Packaging.FuncTest
     /// </summary>
     public class SigningTestFixture : IDisposable
     {
+        private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
+
         private TrustedTestCert<TestCertificate> _trustedTestCert;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
@@ -65,6 +67,8 @@ namespace NuGet.Packaging.FuncTest
                 return _signingSpecifications;
             }
         }
+
+        public string Timestamper => _timestamper;
 
         public void Dispose()
         {

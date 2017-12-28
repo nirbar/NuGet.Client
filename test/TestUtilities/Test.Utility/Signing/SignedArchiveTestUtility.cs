@@ -169,13 +169,62 @@ namespace Test.Utility.Signing
             await signer.SignAsync(request, testLogger, CancellationToken.None);
         }
 
-
         public static async Task<VerifySignaturesResult> VerifySignatureAsync(SignedPackageArchive signPackage, SignedPackageVerifierSettings settings)
         {
             var verificationProviders = new[] { new SignatureTrustAndValidityVerificationProvider() };
             var verifier = new PackageSignatureVerifier(verificationProviders, settings);
             var result = await verifier.VerifySignaturesAsync(signPackage, CancellationToken.None);
             return result;
+        }
+
+        /// <summary>
+        /// Generates a Signature for a given package for tests.
+        /// </summary>
+        /// <param name="signatureProvider">Signature proivider to create the signature.</param>
+        /// <param name="package">Package to be used for the signature.</param>
+        /// <param name="request">SignPackageRequest containing the metadata for the signature request.</param>
+        /// <param name="testLogger">ILogger.</param>
+        /// <returns>Signature for the package.</returns>
+        public static async Task<Signature> GeneratePackageSignatureAsync(ISignatureProvider signatureProvider, PackageArchiveReader package, SignPackageRequest request, TestLogger testLogger)
+        {
+            var zipArchiveHash = await package.GetArchiveHashAsync(request.SignatureHashAlgorithm, CancellationToken.None);
+            var base64ZipArchiveHash = Convert.ToBase64String(zipArchiveHash);
+            var signatureContent = new SignatureContent(request.SignatureHashAlgorithm, base64ZipArchiveHash);
+
+            return await signatureProvider.CreateSignatureAsync(request, signatureContent, testLogger, CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Timestamps a signature for tests.
+        /// </summary>
+        /// <param name="timestampProvider">Timestamp provider.</param>
+        /// <param name="signatureRequest">SignPackageRequest containing metadata for timestamp request./param>
+        /// <param name="signature">Signature that needs to be timestamped.</param>
+        /// <param name="logger">ILogger.</param>
+        /// <returns>Timestamped Signature.</returns>
+        public static Task<Signature> TimestampSignature(ITimestampProvider timestampProvider, SignPackageRequest signatureRequest, Signature signature, ILogger logger)
+        {
+            var timestampRequest = new TimestampRequest
+            {
+                SignatureValue = signature.GetBytes(),
+                SigningSpec = SigningSpecifications.V1,
+                TimestampHashAlgorithm = signatureRequest.TimestampHashAlgorithm
+            };
+
+            return TimestampSignature(timestampProvider, timestampRequest, signature, logger);
+        }
+
+        /// <summary>
+        /// Timestamps a signature for tests.
+        /// </summary>
+        /// <param name="timestampProvider">Timestamp provider.</param>
+        /// <param name="signature">Signature that needs to be timestamped.</param>
+        /// <param name="logger">ILogger.</param>
+        /// <param name="timestampRequest">timestampRequest containing metadata for timestamp request.</param>
+        /// <returns>Timestamped Signature.</returns>
+        public static Task<Signature> TimestampSignature(ITimestampProvider timestampProvider, TimestampRequest timestampRequest, Signature signature, ILogger logger)
+        {
+            return timestampProvider.TimestampSignatureAsync(timestampRequest, logger, CancellationToken.None);
         }
 
         /// <summary>
