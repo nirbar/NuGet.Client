@@ -19,7 +19,6 @@ namespace NuGet.Packaging.FuncTest
         private const int _trustedCertChainLength = 3;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
-        private IList<TrustedTestCert<TestCertificate>> _trustedTestCertChain;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
 
@@ -38,19 +37,6 @@ namespace NuGet.Packaging.FuncTest
                 }
 
                 return _trustedTestCert;
-            }
-        }
-
-        public TrustedTestCert<TestCertificate> TrustedTestCertificateWithChain
-        {
-            get
-            {
-                if (_trustedTestCertChain == null)
-                {
-                    _trustedTestCertChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
-                }
-
-                return _trustedTestCertChain.Last();
             }
         }
 
@@ -85,11 +71,5 @@ namespace NuGet.Packaging.FuncTest
         }
 
         public string Timestamper => _timestamper;
-
-        public void Dispose()
-        {
-            _trustedTestCert?.Dispose();
-            (_trustedTestCertChain as List<TrustedTestCert<TestCertificate>>)?.ForEach(c => c.Dispose());
-        }
     }
 }

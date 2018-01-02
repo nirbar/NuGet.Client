@@ -185,11 +185,11 @@ namespace Test.Utility.Signing
         /// <param name="request">SignPackageRequest containing the metadata for the signature request.</param>
         /// <param name="testLogger">ILogger.</param>
         /// <returns>Signature for the package.</returns>
-        public static async Task<Signature> GeneratePackageSignatureAsync(ISignatureProvider signatureProvider, PackageArchiveReader package, SignPackageRequest request, TestLogger testLogger)
+        public static async Task<Signature> CreateSignatureForPackageAsync(ISignatureProvider signatureProvider, PackageArchiveReader package, SignPackageRequest request, TestLogger testLogger)
         {
             var zipArchiveHash = await package.GetArchiveHashAsync(request.SignatureHashAlgorithm, CancellationToken.None);
             var base64ZipArchiveHash = Convert.ToBase64String(zipArchiveHash);
-            var signatureContent = new SignatureContent(request.SignatureHashAlgorithm, base64ZipArchiveHash);
+            var signatureContent = new SignatureContent(SigningSpecifications.V1, request.SignatureHashAlgorithm, base64ZipArchiveHash);
 
             return await signatureProvider.CreateSignatureAsync(request, signatureContent, testLogger, CancellationToken.None);
         }

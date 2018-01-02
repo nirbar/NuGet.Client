@@ -185,7 +185,7 @@ namespace NuGet.Packaging.FuncTest
             using (var testCertificate = new X509Certificate2(_trustedTestCert.Source.Cert))
             using (var signatureRequest = new SignPackageRequest() { Certificate = testCertificate, SignatureType = SignatureType.Author })
             {
-                var signature = await SignedArchiveTestUtility.GeneratePackageSignatureAsync(signatureProvider, package, signatureRequest, testLogger);
+                var signature = await SignedArchiveTestUtility.CreateSignatureForPackageAsync(signatureProvider, package, signatureRequest, testLogger);
                 var timestampedSignature = await SignedArchiveTestUtility.TimestampSignature(timestampProvider, signatureRequest, signature, testLogger);
                 var reTimestampedSignature = await SignedArchiveTestUtility.TimestampSignature(timestampProvider, signatureRequest, timestampedSignature, testLogger);
 
@@ -226,7 +226,7 @@ namespace NuGet.Packaging.FuncTest
                     result.Valid.Should().BeFalse();
                     resultsWithErrors.Count().Should().Be(1);
                     totalErrorIssues.Count().Should().Be(1);
-                    totalErrorIssues.First().Code.Should().Be(NuGetLogCode.NU3050);
+                    totalErrorIssues.First().Code.Should().Be(NuGetLogCode.NU3027);
                 }
             }
         }
