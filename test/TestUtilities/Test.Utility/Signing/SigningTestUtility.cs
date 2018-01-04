@@ -161,6 +161,7 @@ namespace Test.Utility.Signing
             // default to new key pair
             var issuerPrivateKey = issuerKeyPair.Private;
 
+#if IS_DESKTOP
             if (issuer == null)
             {
                 certGen.SetIssuerDN(new X509Name($"CN={subjectName}"));
@@ -173,6 +174,9 @@ namespace Test.Utility.Signing
                 certGen.AddExtension(X509Extensions.AuthorityKeyIdentifier.Id, false, authorityKeyIdentifier);
                 certGen.SetIssuerDN(bcIssuer.SubjectDN);
             }
+#else
+            certGen.SetIssuerDN(new X509Name($"CN={subjectName}"));
+#endif
 
             certGen.SetNotAfter(DateTime.UtcNow.Add(TimeSpan.FromHours(1)));
             certGen.SetNotBefore(DateTime.UtcNow.Subtract(TimeSpan.FromHours(1)));

@@ -21,10 +21,10 @@ namespace Test.Utility.Signing
 
         public X509Crl Crl { get; set; }
 
+#if IS_DESKTOP
         public static CertificateRevocationList CreateCrl(X509Certificate2 certCA)
         {
             var bcCertCA = DotNetUtilities.FromX509Certificate(certCA);
-
             var crlGen = new X509V2CrlGenerator();
             crlGen.SetIssuerDN(bcCertCA.SubjectDN);
             crlGen.SetThisUpdate(DateTime.Now);
@@ -48,7 +48,12 @@ namespace Test.Utility.Signing
                 Crl = crl
             };
         }
-
+#else
+        public static CertificateRevocationList CreateCrl(X509Certificate2 certCA)
+        {
+            return null;
+        }
+#endif
         public void InstallCrl(StoreLocation storeLocation, StoreName storeName)
         {
             InstallCrl(Crl.GetEncoded(), storeLocation, storeName);

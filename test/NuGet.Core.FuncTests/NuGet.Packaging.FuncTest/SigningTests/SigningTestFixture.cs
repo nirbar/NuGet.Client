@@ -71,5 +71,10 @@ namespace NuGet.Packaging.FuncTest
         }
 
         public string Timestamper => _timestamper;
+
+        public void Dispose()
+        {
+            _trustedTestCert?.Dispose();
+        }
     }
 }
