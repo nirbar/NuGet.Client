@@ -28,6 +28,12 @@ namespace Test.Utility.Signing
         public X509Certificate2 PublicCertWithPrivateKey => SigningTestUtility.GetPublicCertWithPrivateKey(Cert);
 
         /// <summary>
+        /// Certificate Revocation List associated with a certificate.
+        /// This will be null if the certificate was not created as a CA certificate.
+        /// </summary>
+        public CertificateRevocationList Crl { get; set; }
+
+        /// <summary>
         /// Trust the PublicCert cert for the life of the object.
         /// </summary>
         /// <remarks>Dispose of the object returned!</remarks>
@@ -48,13 +54,21 @@ namespace Test.Utility.Signing
         public static TestCertificate Generate(Action<X509V3CertificateGenerator> modifyGenerator = null, X509Certificate2 issuer = null, bool isCA = false)
         {
             var certName = "NuGetTest " + Guid.NewGuid().ToString();
+            var cert = SigningTestUtility.GenerateCertificate(certName, modifyGenerator, issuer: issuer, isCA: isCA);
+            CertificateRevocationList crl = null;
 
-            var pair = new TestCertificate
+            if (isCA)
             {
-                Cert = SigningTestUtility.GenerateCertificate(certName, modifyGenerator, issuer: issuer, isCA: isCA)
+                crl = CertificateRevocationList.CreateCrl(cert);
+            }
+
+            var testCertificate = new TestCertificate
+            {
+                Cert = cert,
+                Crl = crl
             };
 
-            return pair;
+            return testCertificate;
         }
     }
 }

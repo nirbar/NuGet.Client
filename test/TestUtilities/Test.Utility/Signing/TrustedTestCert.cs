@@ -11,7 +11,7 @@ namespace Test.Utility.Signing
     /// </summary>
     public class TrustedTestCert<T> : IDisposable
     {
-        private readonly X509Store _store;
+        private X509Store _store;
 
         public X509Certificate2 TrustedCert { get; }
 
@@ -27,7 +27,6 @@ namespace Test.Utility.Signing
             StoreLocation storeLocation = StoreLocation.CurrentUser)
         {
             Source = source;
-
             TrustedCert = getCert(source);
 
 #if IS_DESKTOP
@@ -38,9 +37,35 @@ namespace Test.Utility.Signing
 #endif
             StoreName = storeName;
             StoreLocation = storeLocation;
+            AddCertificateToStore();
+            AddCrlToStore();
+        }
+
+        private void AddCertificateToStore()
+        {
             _store = new X509Store(StoreName, StoreLocation);
             _store.Open(OpenFlags.ReadWrite);
             _store.Add(TrustedCert);
+        }
+
+        private void AddCrlToStore()
+        {
+            var testCertificate = Source as TestCertificate;
+
+            if (testCertificate != null && testCertificate.Crl != null)
+            {
+                testCertificate.Crl.InstallCrl(StoreLocation, StoreName);
+            }
+        }
+
+        private void DisposeCrl()
+        {
+            var testCertificate = Source as TestCertificate;
+
+            if (testCertificate != null && testCertificate.Crl != null)
+            {
+                testCertificate.Crl.Dispose();
+            }
         }
 
         public void Dispose()
@@ -52,6 +77,8 @@ namespace Test.Utility.Signing
                 _store.Close();
 #endif
             }
+
+            DisposeCrl();
         }
     }
 }

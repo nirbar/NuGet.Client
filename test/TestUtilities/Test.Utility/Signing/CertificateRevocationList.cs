@@ -2,15 +2,12 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
-using NuGet.Test.Utility;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Crypto.Operators;
 using Org.BouncyCastle.Math;
-using Org.BouncyCastle.OpenSsl;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.X509;
 using Org.BouncyCastle.X509.Extension;
@@ -20,19 +17,16 @@ namespace Test.Utility.Signing
     public class CertificateRevocationList : IDisposable
     {
         private IntPtr _nativeCrlHandle;
-
-        public StoreName StoreName { get; set; }
-
-        public StoreLocation StoreLocation { get; set; }
+        private IntPtr _nativeStoreHandle;
 
         public X509Crl Crl { get; set; }
 
-        public static CertificateRevocationList CreateCrl(TrustedTestCert<TestCertificate> certCA)
+        public static CertificateRevocationList CreateCrl(X509Certificate2 certCA)
         {
-            var bcCertCA = DotNetUtilities.FromX509Certificate(certCA.Source.Cert);
+            var bcCertCA = DotNetUtilities.FromX509Certificate(certCA);
 
             var crlGen = new X509V2CrlGenerator();
-            crlGen.SetIssuerDN(bcCertCA.IssuerDN);
+            crlGen.SetIssuerDN(bcCertCA.SubjectDN);
             crlGen.SetThisUpdate(DateTime.Now);
             crlGen.SetNextUpdate(DateTime.Now.AddYears(1));
 
@@ -45,21 +39,19 @@ namespace Test.Utility.Signing
                                new CrlNumber(BigInteger.One));
 
             var random = new SecureRandom();
-            var issuerPrivateKey = DotNetUtilities.GetKeyPair(certCA.Source.Cert.PrivateKey).Private;
+            var issuerPrivateKey = DotNetUtilities.GetKeyPair(certCA.PrivateKey).Private;
             var signatureFactory = new Asn1SignatureFactory(bcCertCA.SigAlgOid, issuerPrivateKey, random);
             var crl = crlGen.Generate(signatureFactory);
 
             return new CertificateRevocationList()
             {
-                Crl = crl,
-                StoreLocation = certCA.StoreLocation,
-                StoreName = certCA.StoreName
+                Crl = crl
             };
         }
 
-        public void InstallCrl()
+        public void InstallCrl(StoreLocation storeLocation, StoreName storeName)
         {
-            InstallCrl(Crl.GetEncoded(), StoreLocation, StoreName);
+            InstallCrl(Crl.GetEncoded(), storeLocation, storeName);
         }
 
         // Native
@@ -112,15 +104,14 @@ namespace Test.Utility.Signing
             CERT_STORE_ADD_NEWER_INHERIT_PROPERTIES = 7,
         }
 
-        // Reference - http://apprize.info/c/cookbook_2/10.html
         private void InstallCrl(byte[] crl, StoreLocation storeLocation, StoreName storeName)
         {
-            var storeHandle = CertOpenStore(
+            var nativeStoreHandle = CertOpenStore(
               CERT_STORE_PROV_SYSTEM,
               ENCODING_TYPE,
               IntPtr.Zero,
               ConvertStoreLocationToNative(storeLocation),
-              storeName.ToString()
+              ConvertStoreNameToNative(storeName)
             );
 
             var nativeCrlHandle = CertCreateCRLContext(
@@ -130,24 +121,20 @@ namespace Test.Utility.Signing
 
             if (nativeCrlHandle == IntPtr.Zero)
             {
-                throw new InvalidDataException("CryptUIWizImport error while installing a CRL - " + Marshal.GetLastWin32Error());
+                throw new InvalidDataException("Error while creating CRL context - " + Marshal.GetLastWin32Error());
             }
 
             if (!CertAddCRLContextToStore(
-                storeHandle,
+                nativeStoreHandle,
                 nativeCrlHandle,
                 Disposition.CERT_STORE_ADD_ALWAYS,
                 IntPtr.Zero))
             {
-                throw new InvalidOperationException("CryptUIWizImport error while installing a CRL - " + Marshal.GetLastWin32Error());
+                throw new InvalidOperationException("Error while installing a CRL - " + Marshal.GetLastWin32Error());
             }
 
             _nativeCrlHandle = nativeCrlHandle;
-
-            if (storeHandle != IntPtr.Zero)
-            {
-                CertCloseStore(storeHandle, 0);
-            }
+            _nativeStoreHandle = nativeStoreHandle;
         }
 
         private static int ConvertStoreLocationToNative(StoreLocation location)
@@ -162,11 +149,34 @@ namespace Test.Utility.Signing
             }
         }
 
+        private static string ConvertStoreNameToNative(StoreName name)
+        {
+            if (name == StoreName.CertificateAuthority)
+            {
+                return "CA";
+            }
+            else
+            {
+                return name.ToString();
+            }
+        }
+
         public void Dispose()
         {
             if (_nativeCrlHandle != IntPtr.Zero)
             {
-                CertDeleteCRLFromStore(_nativeCrlHandle)
+                if (!CertDeleteCRLFromStore(_nativeCrlHandle))
+                {
+                    throw new InvalidOperationException("Error while deleting a CRL - " + Marshal.GetLastWin32Error());
+                }
+            }
+
+            if (_nativeStoreHandle != IntPtr.Zero)
+            {
+                if (!CertCloseStore(_nativeStoreHandle, 0))
+                {
+                    throw new InvalidOperationException("Error while closing a certificate store - " + Marshal.GetLastWin32Error());
+                }
             }
         }
     }

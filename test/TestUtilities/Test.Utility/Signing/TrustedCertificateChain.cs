@@ -10,12 +10,9 @@ namespace Test.Utility.Signing
     {
         public IList<TrustedTestCert<TestCertificate>> Certificates { get; set; }
 
-        public CertificateRevocationList Crl { get; set; }
-
         public void Dispose()
         {
             (Certificates as List<TrustedTestCert<TestCertificate>>)?.ForEach(c => c.Dispose());
-            Crl.Dispose();
         }
     }
 }

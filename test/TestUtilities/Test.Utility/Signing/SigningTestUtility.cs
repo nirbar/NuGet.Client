@@ -107,19 +107,26 @@ namespace Test.Utility.Signing
             var certChain = new List<TrustedTestCert<TestCertificate>>();
             var actionGenerator = CertificateModificationGeneratorForCodeSigningEkuCert;
             TrustedTestCert<TestCertificate> issuer = null;
+            TrustedTestCert<TestCertificate> cert = null;
 
             for (var i = 0; i < length; i++)
             {
-                if (issuer == null)
+                if (i == 0) // root CA cert
                 {
-                    issuer = TestCertificate.Generate(actionGenerator, isCA: true).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    cert = TestCertificate.Generate(actionGenerator, isCA: true).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    issuer = cert;
                 }
-                else
+                else if (i < length - 1) // intermediate CA cert
                 {
-                    issuer = TestCertificate.Generate(actionGenerator, issuer.Source.Cert).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
+                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert, isCA: true).WithPrivateKeyAndTrust(StoreName.CertificateAuthority, StoreLocation.LocalMachine);
+                    issuer = cert;
+                }
+                else // leaf cert
+                {
+                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
                 }
 
-                certChain.Add(issuer);
+                certChain.Add(cert);
             }
 
             return certChain;

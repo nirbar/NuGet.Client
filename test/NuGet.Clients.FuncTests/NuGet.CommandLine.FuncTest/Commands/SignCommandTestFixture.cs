@@ -17,7 +17,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
     public class SignCommandTestFixture : IDisposable
     {
         private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
-        private const int _trustedCertChainLength = 2;
+        private const int _trustedCertChainLength = 3;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
         private TrustedTestCert<TestCertificate> _trustedTestCertWithInvalidEku;
@@ -106,13 +106,10 @@ namespace NuGet.CommandLine.FuncTest.Commands
                 if (_trustedTestCertChain == null)
                 {
                     var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
-                    var crl = CertificateRevocationList.CreateCrl(certChain.First());
-                    crl.InstallCrl();
 
                     _trustedTestCertChain = new TrustedCertificateChain()
                     {
                         Certificates = certChain,
-                        Crl = crl
                     };
                 }
 
