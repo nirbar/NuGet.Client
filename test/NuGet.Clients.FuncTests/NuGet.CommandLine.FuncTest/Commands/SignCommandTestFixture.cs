@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using NuGet.CommandLine.Test;
 using NuGet.Packaging.Signing;
@@ -16,12 +17,13 @@ namespace NuGet.CommandLine.FuncTest.Commands
     public class SignCommandTestFixture : IDisposable
     {
         private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
-        private const int _trustedCertChainLength = 3;
+        private const int _trustedCertChainLength = 2;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
         private TrustedTestCert<TestCertificate> _trustedTestCertWithInvalidEku;
         private TrustedTestCert<TestCertificate> _trustedTestCertExpired;
         private TrustedTestCert<TestCertificate> _trustedTestCertNotYetValid;
+        private TrustedCertificateChain _trustedTestCertChain;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
         private string _nugetExePath;
@@ -72,7 +74,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
                     // Code Sign EKU needs trust to a root authority
                     // Add the cert to Root CA list in LocalMachine as it does not prompt a dialog
                     // This makes all the associated tests to require admin privilege
-                    _trustedTestCertExpired = TestCertificate.Generate(actionGenerator).WithTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    _trustedTestCertExpired = TestCertificate.Generate(actionGenerator).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
                 }
 
                 return _trustedTestCertExpired;
@@ -90,7 +92,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
                     // Code Sign EKU needs trust to a root authority
                     // Add the cert to Root CA list in LocalMachine as it does not prompt a dialog
                     // This makes all the associated tests to require admin privilege
-                    _trustedTestCertNotYetValid = TestCertificate.Generate(actionGenerator).WithTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    _trustedTestCertNotYetValid = TestCertificate.Generate(actionGenerator).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
                 }
 
                 return _trustedTestCertNotYetValid;
@@ -103,10 +105,18 @@ namespace NuGet.CommandLine.FuncTest.Commands
             {
                 if (_trustedTestCertChain == null)
                 {
-                    _trustedTestCertChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
+                    var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
+                    var crl = CertificateRevocationList.CreateCrl(certChain.First());
+                    crl.InstallCrl();
+
+                    _trustedTestCertChain = new TrustedCertificateChain()
+                    {
+                        Certificates = certChain,
+                        Crl = crl
+                    };
                 }
 
-                return _trustedTestCertChain.Last();
+                return _trustedTestCertChain.Certificates.Last();
             }
         }
 
@@ -161,7 +171,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
             _trustedTestCertWithInvalidEku?.Dispose();
             _trustedTestCertExpired?.Dispose();
             _trustedTestCertNotYetValid?.Dispose();
-            (_trustedTestCertChain as List<TrustedTestCert<TestCertificate>>)?.ForEach(c => c.Dispose());
+            _trustedTestCertChain?.Dispose();
         }
     }
 }

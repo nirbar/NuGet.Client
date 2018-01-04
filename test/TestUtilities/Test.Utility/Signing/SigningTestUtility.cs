@@ -19,6 +19,7 @@ using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Utilities;
 using Org.BouncyCastle.X509;
+using Org.BouncyCastle.X509.Extension;
 
 namespace Test.Utility.Signing
 {
@@ -96,7 +97,7 @@ namespace Test.Utility.Signing
         /// <summary>
         /// Generates a list of certificates representing a chain of certificates.
         /// The first certificate is the root certificate stored in StoreName.Root and StoreLocation.LocalMachine.
-        /// THe last certificate is the leaf certificate stored in StoreName.TrustedPeople and StoreLocation.LocalMachine.
+        /// The last certificate is the leaf certificate stored in StoreName.TrustedPeople and StoreLocation.LocalMachine.
         /// Please dispose all the certificates in the list after use.
         /// </summary>
         /// <param name="length">Length of the chain.</param>
@@ -104,19 +105,18 @@ namespace Test.Utility.Signing
         public static IList<TrustedTestCert<TestCertificate>> GenerateCertificateChain(int length)
         {
             var certChain = new List<TrustedTestCert<TestCertificate>>();
-
-            var actionGenerator = SigningTestUtility.CertificateModificationGeneratorForCodeSigningEkuCert;
+            var actionGenerator = CertificateModificationGeneratorForCodeSigningEkuCert;
             TrustedTestCert<TestCertificate> issuer = null;
 
             for (var i = 0; i < length; i++)
             {
                 if (issuer == null)
                 {
-                    issuer = TestCertificate.Generate(actionGenerator).WithTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    issuer = TestCertificate.Generate(actionGenerator, isCA: true).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
                 }
                 else
                 {
-                    issuer = TestCertificate.Generate(actionGenerator, issuer.Source.Cert.SubjectName.Name).WithTrust(StoreName.TrustedPeople, StoreLocation.LocalMachine);
+                    issuer = TestCertificate.Generate(actionGenerator, issuer.Source.Cert).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
                 }
 
                 certChain.Add(issuer);
@@ -133,7 +133,8 @@ namespace Test.Utility.Signing
             Action<X509V3CertificateGenerator> modifyGenerator,
             string signatureAlgorithm = "SHA256WITHRSA",
             int publicKeyLength = 2048,
-            string issuerDN = null)
+            X509Certificate2 issuer = null,
+            bool isCA = false)
         {
             if (string.IsNullOrEmpty(subjectName))
             {
@@ -144,38 +145,69 @@ namespace Test.Utility.Signing
             var pairGenerator = new RsaKeyPairGenerator();
             var genParams = new KeyGenerationParameters(random, publicKeyLength);
             pairGenerator.Init(genParams);
-            var pair = pairGenerator.GenerateKeyPair();
+            var issuerKeyPair = pairGenerator.GenerateKeyPair();
 
             // Create cert
             var certGen = new X509V3CertificateGenerator();
             certGen.SetSubjectDN(new X509Name($"CN={subjectName}"));
-            certGen.SetIssuerDN(new X509Name($"CN={issuerDN ?? subjectName}"));
+
+            // default to new key pair
+            var issuerPrivateKey = issuerKeyPair.Private;
+
+            if (issuer == null)
+            {
+                certGen.SetIssuerDN(new X509Name($"CN={subjectName}"));
+            }
+            else
+            {
+                var bcIssuer = DotNetUtilities.FromX509Certificate(issuer);
+                var authorityKeyIdentifier = new AuthorityKeyIdentifierStructure(bcIssuer);
+                issuerPrivateKey = DotNetUtilities.GetKeyPair(issuer.PrivateKey).Private;
+                certGen.AddExtension(X509Extensions.AuthorityKeyIdentifier.Id, false, authorityKeyIdentifier);
+                certGen.SetIssuerDN(bcIssuer.SubjectDN);
+            }
 
             certGen.SetNotAfter(DateTime.UtcNow.Add(TimeSpan.FromHours(1)));
             certGen.SetNotBefore(DateTime.UtcNow.Subtract(TimeSpan.FromHours(1)));
-            certGen.SetPublicKey(pair.Public);
+            certGen.SetPublicKey(issuerKeyPair.Public);
 
             var serialNumber = BigIntegers.CreateRandomInRange(BigInteger.One, BigInteger.ValueOf(long.MaxValue), random);
             certGen.SetSerialNumber(serialNumber);
 
-            var subjectKeyIdentifier = new SubjectKeyIdentifier(SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(pair.Public));
+            var subjectKeyIdentifier = new SubjectKeyIdentifier(SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(issuerKeyPair.Public));
             certGen.AddExtension(X509Extensions.SubjectKeyIdentifier.Id, false, subjectKeyIdentifier);
-            certGen.AddExtension(X509Extensions.KeyUsage, true, new KeyUsage(KeyUsage.KeyCertSign));
-            certGen.AddExtension(X509Extensions.BasicConstraints.Id, true, new BasicConstraints(false));
+
+            var keyUsage = isCA ? KeyUsage.CrlSign | KeyUsage.KeyCertSign | KeyUsage.DigitalSignature : KeyUsage.DigitalSignature;
+            certGen.AddExtension(X509Extensions.KeyUsage.Id, false, new KeyUsage(keyUsage));
+            certGen.AddExtension(X509Extensions.BasicConstraints.Id, true, new BasicConstraints(isCA));
 
             // Allow changes
             modifyGenerator?.Invoke(certGen);
 
-            var issuerPrivateKey = pair.Private;
             var signatureFactory = new Asn1SignatureFactory(signatureAlgorithm, issuerPrivateKey, random);
             var certificate = certGen.Generate(signatureFactory);
             var certResult = new X509Certificate2(certificate.GetEncoded());
 
 #if IS_DESKTOP
-            certResult.PrivateKey = DotNetUtilities.ToRSA(pair.Private as RsaPrivateCrtKeyParameters);
+            certResult.PrivateKey = DotNetUtilities.ToRSA(issuerKeyPair.Private as RsaPrivateCrtKeyParameters);
 #endif
 
             return certResult;
+        }
+
+        private static X509SubjectKeyIdentifierExtension GetSubjectKeyIdentifier(X509Certificate2 issuer)
+        {
+            var subjectKeyIdentifierOid = "2.5.29.14";
+
+            foreach (var extension in issuer.Extensions)
+            {
+                if (string.Equals(extension.Oid.Value, subjectKeyIdentifierOid))
+                {
+                    return extension as X509SubjectKeyIdentifierExtension;
+                }
+            }
+
+            return null;
         }
 
 #if IS_DESKTOP
