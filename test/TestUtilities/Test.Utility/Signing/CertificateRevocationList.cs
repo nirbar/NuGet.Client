@@ -82,6 +82,10 @@ namespace Test.Utility.Signing
           IntPtr ppStoreContext);
 
         [DllImport("CRYPT32.DLL", SetLastError = true)]
+        public static extern bool CertFreeCRLContext(
+          IntPtr pCrlContext);
+
+        [DllImport("CRYPT32.DLL", SetLastError = true)]
         public static extern bool CertDeleteCRLFromStore(
           IntPtr pCrlContext);
 
@@ -124,17 +128,27 @@ namespace Test.Utility.Signing
                 throw new InvalidDataException("Error while creating CRL context - " + Marshal.GetLastWin32Error());
             }
 
+            var tempNativeCrlHandle = nativeCrlHandle;
+
             if (!CertAddCRLContextToStore(
                 nativeStoreHandle,
                 nativeCrlHandle,
-                Disposition.CERT_STORE_ADD_ALWAYS,
-                IntPtr.Zero))
+                Disposition.CERT_STORE_ADD_REPLACE_EXISTING,
+                nativeCrlHandle))
             {
                 throw new InvalidOperationException("Error while installing a CRL - " + Marshal.GetLastWin32Error());
             }
 
-            _nativeCrlHandle = nativeCrlHandle;
+            _nativeCrlHandle = Marshal.ReadIntPtr(nativeCrlHandle);
             _nativeStoreHandle = nativeStoreHandle;
+
+            if (tempNativeCrlHandle != IntPtr.Zero)
+            {
+                if (!CertFreeCRLContext(tempNativeCrlHandle))
+                {
+                    throw new InvalidOperationException("Error while deleting temp CRL - " + Marshal.GetLastWin32Error());
+                }
+            }
         }
 
         private static int ConvertStoreLocationToNative(StoreLocation location)
@@ -167,7 +181,7 @@ namespace Test.Utility.Signing
             {
                 if (!CertDeleteCRLFromStore(_nativeCrlHandle))
                 {
-                    throw new InvalidOperationException("Error while deleting a CRL - " + Marshal.GetLastWin32Error());
+                    throw new InvalidOperationException("Error while deleting a CRL from store - " + Marshal.GetLastWin32Error());
                 }
             }
 
