@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using NuGet.CommandLine.Test;
 using NuGet.Packaging.Signing;
+using NuGet.Test.Utility;
 using Test.Utility.Signing;
 
 namespace NuGet.CommandLine.FuncTest.Commands
@@ -17,7 +20,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
     public class SignCommandTestFixture : IDisposable
     {
         private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
-        private const int _trustedCertChainLength = 3;
+        private const int _trustedCertChainLength = 2;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
         private TrustedTestCert<TestCertificate> _trustedTestCertWithInvalidEku;
@@ -27,6 +30,8 @@ namespace NuGet.CommandLine.FuncTest.Commands
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
         private string _nugetExePath;
+        private MockServer _crlServer;
+        private TestDirectory _testDirectory;
 
         public TrustedTestCert<TestCertificate> TrustedTestCertificate
         {
@@ -105,16 +110,58 @@ namespace NuGet.CommandLine.FuncTest.Commands
             {
                 if (_trustedTestCertChain == null)
                 {
-                    var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength);
+                    var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength, CrlServer.Uri, TestDirectory);
 
                     _trustedTestCertChain = new TrustedCertificateChain()
                     {
-                        Certificates = certChain,
+                        Certificates = certChain
                     };
+
+                    SetUpCrlDistributionPoint();
+                    CrlServer.Start();
                 }
 
-                return _trustedTestCertChain.Certificates.Last();
+                return _trustedTestCertChain.Leaf;
             }
+        }
+
+        private void SetUpCrlDistributionPoint()
+        {
+            CrlServer.Get.Add(
+                "/",
+                request =>
+                {
+                    var urlSplits = request.RawUrl.Split('/').Where(s => !string.IsNullOrEmpty(s)).ToArray();
+                    if (urlSplits.Length != 2 || !urlSplits[1].EndsWith(".crl"))
+                    {
+                        return new Action<HttpListenerResponse>(response =>
+                        {
+                            response.StatusCode = 404;
+                        });
+                    }
+                    else
+                    {
+                        var crlName = urlSplits[1];
+                        var crlPath = Path.Combine(TestDirectory, crlName);
+                        if (File.Exists(crlPath))
+                        {
+                            return new Action<HttpListenerResponse>(response =>
+                            {
+                                response.ContentType = "application/pkix-crl";
+                                response.StatusCode = 200;
+                                var content = File.ReadAllBytes(crlPath);
+                                MockServer.SetResponseContent(response, content);
+                            });
+                        }
+                        else
+                        {
+                            return new Action<HttpListenerResponse>(response =>
+                            {
+                                response.StatusCode = 404;
+                            });
+                        }
+                    }
+                });
         }
 
         public IList<ISignatureVerificationProvider> TrustProviders
@@ -160,6 +207,32 @@ namespace NuGet.CommandLine.FuncTest.Commands
             }
         }
 
+        public MockServer CrlServer
+        {
+            get
+            {
+                if (_crlServer == null)
+                {
+                    _crlServer = new MockServer();
+                }
+
+                return _crlServer;
+            }
+        }
+
+        public TestDirectory TestDirectory
+        {
+            get
+            {
+                if (_testDirectory == null)
+                {
+                    _testDirectory = TestDirectory.Create();
+                }
+
+                return _testDirectory;
+            }
+        }
+
         public string Timestamper => _timestamper;
 
         public void Dispose()
@@ -169,6 +242,9 @@ namespace NuGet.CommandLine.FuncTest.Commands
             _trustedTestCertExpired?.Dispose();
             _trustedTestCertNotYetValid?.Dispose();
             _trustedTestCertChain?.Dispose();
+            _crlServer?.Stop();
+            _crlServer?.Dispose();
+            _testDirectory?.Dispose();
         }
     }
 }

@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.IO;
 using System.Security.Cryptography.X509Certificates;
 
 namespace Test.Utility.Signing
@@ -54,7 +55,7 @@ namespace Test.Utility.Signing
 
             if (testCertificate != null && testCertificate.Crl != null)
             {
-                testCertificate.Crl.InstallCrl(StoreLocation, StoreName);
+                testCertificate.Crl.ExportCrl();
             }
         }
 

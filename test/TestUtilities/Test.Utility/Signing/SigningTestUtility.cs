@@ -4,12 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
-
 #if IS_DESKTOP
 using System.Security.Cryptography.Pkcs;
 #endif
-
 using System.Security.Cryptography.X509Certificates;
+using Org.BouncyCastle.Asn1;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
@@ -102,7 +101,7 @@ namespace Test.Utility.Signing
         /// </summary>
         /// <param name="length">Length of the chain.</param>
         /// <returns>List of certificates representing a chain of certificates.</returns>
-        public static IList<TrustedTestCert<TestCertificate>> GenerateCertificateChain(int length)
+        public static IList<TrustedTestCert<TestCertificate>> GenerateCertificateChain(int length, string crlServerUri, string crlLocalUri)
         {
             var certChain = new List<TrustedTestCert<TestCertificate>>();
             var actionGenerator = CertificateModificationGeneratorForCodeSigningEkuCert;
@@ -113,23 +112,34 @@ namespace Test.Utility.Signing
             {
                 if (i == 0) // root CA cert
                 {
-                    cert = TestCertificate.Generate(actionGenerator, isCA: true).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    cert = TestCertificate.Generate(actionGenerator, isCA: true, crlServerUri: crlServerUri, crlLocalUri: crlLocalUri).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
                     issuer = cert;
                 }
                 else if (i < length - 1) // intermediate CA cert
                 {
-                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert, isCA: true).WithPrivateKeyAndTrust(StoreName.CertificateAuthority, StoreLocation.LocalMachine);
+                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert, isCA: true, crlServerUri: crlServerUri, crlLocalUri: crlLocalUri).WithPrivateKeyAndTrust(StoreName.CertificateAuthority, StoreLocation.LocalMachine);
                     issuer = cert;
                 }
                 else // leaf cert
                 {
-                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
+                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert, crlServerUri: crlServerUri).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
                 }
 
                 certChain.Add(cert);
             }
 
             return certChain;
+        }
+
+        public static void RevokeCertificate(TrustedTestCert<TestCertificate> revokeCertificate, TrustedTestCert<TestCertificate> RevocationAuthorityCertificate)
+        {
+            if (RevocationAuthorityCertificate.Source.Crl == null)
+            {
+                throw new InvalidOperationException("Revoking authority must have a valid CRL");
+            }
+
+            var crl = RevocationAuthorityCertificate.Source.Crl;
+
         }
 
         /// <summary>
@@ -141,7 +151,8 @@ namespace Test.Utility.Signing
             string signatureAlgorithm = "SHA256WITHRSA",
             int publicKeyLength = 2048,
             X509Certificate2 issuer = null,
-            bool isCA = false)
+            bool isCA = false,
+            string crlServerUri = null)
         {
             if (string.IsNullOrEmpty(subjectName))
             {
@@ -160,6 +171,7 @@ namespace Test.Utility.Signing
 
             // default to new key pair
             var issuerPrivateKey = issuerKeyPair.Private;
+            var keyUsage = KeyUsage.DigitalSignature;
 
 #if IS_DESKTOP
             if (issuer == null)
@@ -188,7 +200,25 @@ namespace Test.Utility.Signing
             var subjectKeyIdentifier = new SubjectKeyIdentifier(SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(issuerKeyPair.Public));
             certGen.AddExtension(X509Extensions.SubjectKeyIdentifier.Id, false, subjectKeyIdentifier);
 
-            var keyUsage = isCA ? KeyUsage.CrlSign | KeyUsage.KeyCertSign | KeyUsage.DigitalSignature : KeyUsage.DigitalSignature;
+            if (isCA)
+            {
+                keyUsage = KeyUsage.CrlSign | KeyUsage.KeyCertSign | KeyUsage.DigitalSignature;
+
+                var generalNames = new GeneralNames(new GeneralName(GeneralName.UniformResourceIdentifier, new DerIA5String($"{crlServerUri}CN={subjectName}.crl")));
+                var distPointName = new DistributionPointName(generalNames);
+                var distPoint = new DistributionPoint(distPointName, null, null);
+
+                certGen.AddExtension(X509Extensions.CrlDistributionPoints, critical: false, extensionValue: new DerSequence(distPoint));
+            }
+            else if (issuer != null)
+            {
+                var generalNames = new GeneralNames(new GeneralName(GeneralName.UniformResourceIdentifier, new DerIA5String($"{crlServerUri}{issuer.Subject}.crl")));
+                var distPointName = new DistributionPointName(generalNames);
+                var distPoint = new DistributionPoint(distPointName, null, null);
+
+                certGen.AddExtension(X509Extensions.CrlDistributionPoints, critical: false, extensionValue: new DerSequence(distPoint));
+            }
+
             certGen.AddExtension(X509Extensions.KeyUsage.Id, false, new KeyUsage(keyUsage));
             certGen.AddExtension(X509Extensions.BasicConstraints.Id, true, new BasicConstraints(isCA));
 

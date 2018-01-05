@@ -51,15 +51,15 @@ namespace Test.Utility.Signing
             return new TrustedTestCert<TestCertificate>(this, e => PublicCertWithPrivateKey, storeName, storeLocation);
         }
 
-        public static TestCertificate Generate(Action<X509V3CertificateGenerator> modifyGenerator = null, X509Certificate2 issuer = null, bool isCA = false)
+        public static TestCertificate Generate(Action<X509V3CertificateGenerator> modifyGenerator = null, X509Certificate2 issuer = null, bool isCA = false, string crlServerUri = null, string crlLocalUri = null)
         {
-            var certName = "NuGetTest " + Guid.NewGuid().ToString();
-            var cert = SigningTestUtility.GenerateCertificate(certName, modifyGenerator, issuer: issuer, isCA: isCA);
+            var certName = "NuGetTest-" + Guid.NewGuid().ToString();
+            var cert = SigningTestUtility.GenerateCertificate(certName, modifyGenerator, issuer: issuer, isCA: isCA, crlServerUri: crlServerUri);
             CertificateRevocationList crl = null;
 
             if (isCA)
             {
-                crl = CertificateRevocationList.CreateCrl(cert);
+                crl = CertificateRevocationList.CreateCrl(cert, crlLocalUri);
             }
 
             var testCertificate = new TestCertificate
