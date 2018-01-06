@@ -54,30 +54,6 @@ namespace Test.Utility.Signing
             };
         }
 
-        public void AddCertificateToRevokedList(X509Certificate2 cert)
-        {
-            var bcIssuerCert = DotNetUtilities.FromX509Certificate(IssuerCert);
-            var crlGen = new X509V2CrlGenerator();
-            crlGen.SetIssuerDN(bcIssuerCert.SubjectDN);
-            crlGen.SetThisUpdate(DateTime.Now);
-            crlGen.SetNextUpdate(DateTime.Now.AddYears(1));
-
-            crlGen.AddExtension(X509Extensions.AuthorityKeyIdentifier,
-                               false,
-                               new AuthorityKeyIdentifierStructure(bcIssuerCert));
-
-            crlGen.AddExtension(X509Extensions.CrlNumber,
-                               false,
-                               new CrlNumber(BigInteger.One));
-
-            var random = new SecureRandom();
-            var issuerPrivateKey = DotNetUtilities.GetKeyPair(IssuerCert.PrivateKey).Private;
-            var signatureFactory = new Asn1SignatureFactory(bcIssuerCert.SigAlgOid, issuerPrivateKey, random);
-            var crl = crlGen.Generate(signatureFactory);
-
-            Crl = crl;
-        }
-
         private void ExportCrl(string filePath)
         {
             var pemWriter = new PemWriter(new StreamWriter(File.Open(filePath, FileMode.Create)));
@@ -94,11 +70,6 @@ namespace Test.Utility.Signing
         }
 #else
         public static CertificateRevocationList CreateCrl(X509Certificate2 certCA, string crlLocalUri)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void AddCertificateToRevokedList(X509Certificate2 cert)
         {
             throw new NotImplementedException();
         }

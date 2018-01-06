@@ -112,34 +112,45 @@ namespace Test.Utility.Signing
             {
                 if (i == 0) // root CA cert
                 {
-                    cert = TestCertificate.Generate(actionGenerator, isCA: true, crlServerUri: crlServerUri, crlLocalUri: crlLocalUri).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
+                    var chainCertificateRequest = new ChainCertificateRequest()
+                    {
+                        CrlLocalBaseUri = crlLocalUri,
+                        CrlServerBaseUri = crlServerUri,
+                        IsCA = true
+                    };
+
+                    cert = TestCertificate.Generate(actionGenerator, chainCertificateRequest).WithPrivateKeyAndTrust(StoreName.Root, StoreLocation.LocalMachine);
                     issuer = cert;
                 }
                 else if (i < length - 1) // intermediate CA cert
                 {
-                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert, isCA: true, crlServerUri: crlServerUri, crlLocalUri: crlLocalUri).WithPrivateKeyAndTrust(StoreName.CertificateAuthority, StoreLocation.LocalMachine);
+                    var chainCertificateRequest = new ChainCertificateRequest()
+                    {
+                        CrlLocalBaseUri = crlLocalUri,
+                        CrlServerBaseUri = crlServerUri,
+                        IsCA = true,
+                        Issuer = issuer.Source.Cert
+                    };
+
+                    cert = TestCertificate.Generate(actionGenerator, chainCertificateRequest).WithPrivateKeyAndTrust(StoreName.CertificateAuthority, StoreLocation.LocalMachine);
                     issuer = cert;
                 }
                 else // leaf cert
                 {
-                    cert = TestCertificate.Generate(actionGenerator, issuer.Source.Cert, crlServerUri: crlServerUri).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
+                    var chainCertificateRequest = new ChainCertificateRequest()
+                    {
+                        CrlLocalBaseUri = crlLocalUri,
+                        CrlServerBaseUri = crlServerUri,
+                        IsCA = false,
+                        Issuer = issuer.Source.Cert
+                    };
+                    cert = TestCertificate.Generate(actionGenerator, chainCertificateRequest).WithPrivateKeyAndTrust(StoreName.My, StoreLocation.LocalMachine);
                 }
 
                 certChain.Add(cert);
             }
 
             return certChain;
-        }
-
-        public static void RevokeCertificate(TrustedTestCert<TestCertificate> revokeCertificate, TrustedTestCert<TestCertificate> RevocationAuthorityCertificate)
-        {
-            if (RevocationAuthorityCertificate.Source.Crl == null)
-            {
-                throw new InvalidOperationException("Revoking authority must have a valid CRL");
-            }
-
-            var crl = RevocationAuthorityCertificate.Source.Crl;
-
         }
 
         /// <summary>
@@ -150,9 +161,7 @@ namespace Test.Utility.Signing
             Action<X509V3CertificateGenerator> modifyGenerator,
             string signatureAlgorithm = "SHA256WITHRSA",
             int publicKeyLength = 2048,
-            X509Certificate2 issuer = null,
-            bool isCA = false,
-            string crlServerUri = null)
+            ChainCertificateRequest chainCertificateRequest = null)
         {
             if (string.IsNullOrEmpty(subjectName))
             {
@@ -166,28 +175,26 @@ namespace Test.Utility.Signing
             var issuerKeyPair = pairGenerator.GenerateKeyPair();
 
             // Create cert
+            var subjectDN = $"CN={subjectName}";
             var certGen = new X509V3CertificateGenerator();
-            certGen.SetSubjectDN(new X509Name($"CN={subjectName}"));
+            certGen.SetSubjectDN(new X509Name(subjectDN));
 
             // default to new key pair
             var issuerPrivateKey = issuerKeyPair.Private;
             var keyUsage = KeyUsage.DigitalSignature;
+            var issuerDN = chainCertificateRequest?.IssuerDN ?? subjectDN;
+            certGen.SetIssuerDN(new X509Name(issuerDN));
 
 #if IS_DESKTOP
-            if (issuer == null)
+            if (chainCertificateRequest?.Issuer != null)
             {
-                certGen.SetIssuerDN(new X509Name($"CN={subjectName}"));
-            }
-            else
-            {
+                // for a certificate with an issuer assign Authority Key Identifier
+                var issuer = chainCertificateRequest?.Issuer;
                 var bcIssuer = DotNetUtilities.FromX509Certificate(issuer);
                 var authorityKeyIdentifier = new AuthorityKeyIdentifierStructure(bcIssuer);
                 issuerPrivateKey = DotNetUtilities.GetKeyPair(issuer.PrivateKey).Private;
                 certGen.AddExtension(X509Extensions.AuthorityKeyIdentifier.Id, false, authorityKeyIdentifier);
-                certGen.SetIssuerDN(bcIssuer.SubjectDN);
             }
-#else
-            certGen.SetIssuerDN(new X509Name($"CN={subjectName}"));
 #endif
 
             certGen.SetNotAfter(DateTime.UtcNow.Add(TimeSpan.FromHours(1)));
@@ -200,27 +207,25 @@ namespace Test.Utility.Signing
             var subjectKeyIdentifier = new SubjectKeyIdentifier(SubjectPublicKeyInfoFactory.CreateSubjectPublicKeyInfo(issuerKeyPair.Public));
             certGen.AddExtension(X509Extensions.SubjectKeyIdentifier.Id, false, subjectKeyIdentifier);
 
-            if (isCA)
+            if (chainCertificateRequest != null)
             {
-                keyUsage = KeyUsage.CrlSign | KeyUsage.KeyCertSign | KeyUsage.DigitalSignature;
-
-                var generalNames = new GeneralNames(new GeneralName(GeneralName.UniformResourceIdentifier, new DerIA5String($"{crlServerUri}CN={subjectName}.crl")));
-                var distPointName = new DistributionPointName(generalNames);
+                // for a certificate in a chain create CRL distribution point extension
+                var crlServerUri = $"{chainCertificateRequest.CrlServerBaseUri}{issuerDN}.crl";
+                var generalName = new GeneralName(GeneralName.UniformResourceIdentifier, new DerIA5String(crlServerUri));
+                var distPointName = new DistributionPointName(new GeneralNames(generalName));
                 var distPoint = new DistributionPoint(distPointName, null, null);
 
                 certGen.AddExtension(X509Extensions.CrlDistributionPoints, critical: false, extensionValue: new DerSequence(distPoint));
-            }
-            else if (issuer != null)
-            {
-                var generalNames = new GeneralNames(new GeneralName(GeneralName.UniformResourceIdentifier, new DerIA5String($"{crlServerUri}{issuer.Subject}.crl")));
-                var distPointName = new DistributionPointName(generalNames);
-                var distPoint = new DistributionPoint(distPointName, null, null);
 
-                certGen.AddExtension(X509Extensions.CrlDistributionPoints, critical: false, extensionValue: new DerSequence(distPoint));
+                if (chainCertificateRequest.IsCA)
+                {
+                    // update key usage with CA cert sign and crl sign attributes
+                    keyUsage |= KeyUsage.CrlSign | KeyUsage.KeyCertSign;
+                }
             }
 
             certGen.AddExtension(X509Extensions.KeyUsage.Id, false, new KeyUsage(keyUsage));
-            certGen.AddExtension(X509Extensions.BasicConstraints.Id, true, new BasicConstraints(isCA));
+            certGen.AddExtension(X509Extensions.BasicConstraints.Id, true, new BasicConstraints(chainCertificateRequest?.IsCA ?? false));
 
             // Allow changes
             modifyGenerator?.Invoke(certGen);
