@@ -196,7 +196,6 @@ namespace Test.Utility.Signing
                 certGen.AddExtension(X509Extensions.AuthorityKeyIdentifier.Id, false, authorityKeyIdentifier);
             }
 #endif
-
             certGen.SetNotAfter(DateTime.UtcNow.Add(TimeSpan.FromHours(1)));
             certGen.SetNotBefore(DateTime.UtcNow.Subtract(TimeSpan.FromHours(1)));
             certGen.SetPublicKey(issuerKeyPair.Public);

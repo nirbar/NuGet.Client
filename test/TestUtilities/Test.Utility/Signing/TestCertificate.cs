@@ -57,7 +57,8 @@ namespace Test.Utility.Signing
             var cert = SigningTestUtility.GenerateCertificate(certName, modifyGenerator, chainCertificateRequest: chainCertificateRequest);
             CertificateRevocationList crl = null;
 
-            if (chainCertificateRequest != null)
+            // create a crl only if the certificate is part of a chain and it is a CA
+            if (chainCertificateRequest != null && chainCertificateRequest.IsCA)
             {
                 crl = CertificateRevocationList.CreateCrl(cert, chainCertificateRequest.CrlLocalBaseUri);
             }

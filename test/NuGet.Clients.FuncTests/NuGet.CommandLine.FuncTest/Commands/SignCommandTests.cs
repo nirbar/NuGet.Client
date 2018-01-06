@@ -22,7 +22,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
     {
         private const string _packageAlreadySignedError = "NU3001: The package already contains a signature. Please remove the existing signature before adding a new signature.";
         private readonly string _invalidPasswordErrorCode = NuGetLogCode.NU3001.ToString();
-        private readonly string _invalidEkuErrorCode = NuGetLogCode.NU3018.ToString();
+        private readonly string _chainBuildFailureErrorCode = NuGetLogCode.NU3018.ToString();
         private readonly string _noCertFoundErrorCode = NuGetLogCode.NU3001.ToString();
         private readonly string _noTimestamperWarningCode = NuGetLogCode.NU3002.ToString();
 
@@ -96,7 +96,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
                 // Assert
                 result.Success.Should().BeFalse();
                 result.AllOutput.Should().Contain(_noTimestamperWarningCode);
-                result.AllOutput.Should().Contain(_invalidEkuErrorCode);
+                result.AllOutput.Should().Contain(_chainBuildFailureErrorCode);
                 result.AllOutput.Should().Contain("NotValidForUsage");
             }
         }
@@ -247,12 +247,14 @@ namespace NuGet.CommandLine.FuncTest.Commands
                 var result = CommandRunner.Run(
                     _nugetExePath,
                     dir,
-                    $"sign {packagePath} -CertificateFingerprint {cert.Source.Cert.Thumbprint}  -CertificateStoreName {cert.StoreName} -CertificateStoreLocation {cert.StoreLocation}",
+                    $"sign {packagePath} -CertificateFingerprint {cert.Source.Cert.Thumbprint}  -CertificateStoreName {cert.StoreName} -CertificateStoreLocation {cert.StoreLocation} -Verbosity Detailed",
                     waitForExit: true);
 
                 // Assert
                 result.Success.Should().BeFalse();
                 result.AllOutput.Should().Contain(_noTimestamperWarningCode);
+                result.AllOutput.Should().Contain(_chainBuildFailureErrorCode);
+                result.AllOutput.Should().Contain("Revoked");
             }
         }
 

@@ -39,7 +39,7 @@ namespace Test.Utility.Signing
             StoreName = storeName;
             StoreLocation = storeLocation;
             AddCertificateToStore();
-            AddCrlToStore();
+            ExportCrl();
         }
 
         private void AddCertificateToStore()
@@ -49,7 +49,7 @@ namespace Test.Utility.Signing
             _store.Add(TrustedCert);
         }
 
-        private void AddCrlToStore()
+        private void ExportCrl()
         {
             var testCertificate = Source as TestCertificate;
 

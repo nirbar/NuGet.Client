@@ -27,7 +27,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
         private TrustedTestCert<TestCertificate> _trustedTestCertExpired;
         private TrustedTestCert<TestCertificate> _trustedTestCertNotYetValid;
         private TrustedCertificateChain _trustedTestCertChain;
-        private TrustedCertificateChain _trustedTestCertChainWithRevoked;
+        private TrustedCertificateChain _revokedTestCertChain;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
         private MockServer _crlServer;
@@ -121,7 +121,6 @@ namespace NuGet.CommandLine.FuncTest.Commands
                     };
 
                     SetUpCrlDistributionPoint();
-                    CrlServer.Start();
                 }
 
                 return _trustedTestCertChain.Leaf;
@@ -132,21 +131,21 @@ namespace NuGet.CommandLine.FuncTest.Commands
         {
             get
             {
-                if (_trustedTestCertChainWithRevoked == null)
+                if (_revokedTestCertChain == null)
                 {
                     var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength, CrlServer.Uri, TestDirectory.Path);
 
-                    _trustedTestCertChainWithRevoked = new TrustedCertificateChain()
+                    _revokedTestCertChain = new TrustedCertificateChain()
                     {
                         Certificates = certChain
                     };
 
-                    _trustedTestCertChainWithRevoked.Root.Source.Crl.RevokeCertificate(_trustedTestCertChainWithRevoked.Leaf.Source.Cert);
+                    _revokedTestCertChain.Certificates[1].Source.Crl.RevokeCertificate(_revokedTestCertChain.Leaf.Source.Cert);
 
                     SetUpCrlDistributionPoint();
                 }
 
-                return _trustedTestCertChainWithRevoked.Leaf;
+                return _revokedTestCertChain.Leaf;
             }
         }
 
@@ -276,6 +275,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
             _trustedTestCertExpired?.Dispose();
             _trustedTestCertNotYetValid?.Dispose();
             _trustedTestCertChain?.Dispose();
+            _revokedTestCertChain?.Dispose();
             _crlServer?.Stop();
             _crlServer?.Dispose();
             _testDirectory?.Dispose();
