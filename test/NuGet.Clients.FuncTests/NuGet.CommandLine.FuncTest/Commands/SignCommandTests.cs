@@ -226,6 +226,37 @@ namespace NuGet.CommandLine.FuncTest.Commands
         }
 
         [CIOnlyFact]
+        public void SignCommand_SignPackageWithRevokedLeafCertChain()
+        {
+            // Arrange
+            var cert = _testFixture.RevokedTestCertificateWithChain;
+
+            using (var dir = TestDirectory.Create())
+            using (var zipStream = new SimpleTestPackageContext().CreateAsStream())
+            {
+                var packagePath = Path.Combine(dir, Guid.NewGuid().ToString());
+
+                zipStream.Seek(offset: 0, loc: SeekOrigin.Begin);
+
+                using (var fileStream = File.OpenWrite(packagePath))
+                {
+                    zipStream.CopyTo(fileStream);
+                }
+
+                // Act
+                var result = CommandRunner.Run(
+                    _nugetExePath,
+                    dir,
+                    $"sign {packagePath} -CertificateFingerprint {cert.Source.Cert.Thumbprint}  -CertificateStoreName {cert.StoreName} -CertificateStoreLocation {cert.StoreLocation}",
+                    waitForExit: true);
+
+                // Assert
+                result.Success.Should().BeFalse();
+                result.AllOutput.Should().Contain(_noTimestamperWarningCode);
+            }
+        }
+
+        [CIOnlyFact]
         public void SignCommand_SignPackageWithOutputDirectory()
         {
             // Arrange

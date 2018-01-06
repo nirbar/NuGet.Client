@@ -3,7 +3,6 @@
 
 using System;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography.X509Certificates;
 using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.Crypto.Operators;
@@ -23,12 +22,32 @@ namespace Test.Utility.Signing
 
         public string CrlLocalPath { get; private set; }
 
+        public BigInteger Version { get; private set; }
+
 #if IS_DESKTOP
-        public static CertificateRevocationList CreateCrl(X509Certificate2 issuerCert, string crlLocalUri)
+        public static CertificateRevocationList CreateCrl(
+            X509Certificate2 issuerCert,
+            string crlLocalUri)
+        {
+            var version = BigInteger.One;
+            var crl = CreateCrl(issuerCert, version);
+
+            return new CertificateRevocationList()
+            {
+                Crl = crl,
+                IssuerCert = issuerCert,
+                CrlLocalPath = Path.Combine(crlLocalUri, $"{issuerCert.Subject}.crl"),
+                Version = version
+            };
+        }
+
+        private static X509Crl CreateCrl(
+            X509Certificate2 issuerCert,
+            BigInteger version,
+            X509Certificate2 revokedCertificate = null)
         {
             var bcIssuerCert = DotNetUtilities.FromX509Certificate(issuerCert);
             var crlGen = new X509V2CrlGenerator();
-            var version = BigInteger.One;
             crlGen.SetIssuerDN(bcIssuerCert.SubjectDN);
             crlGen.SetThisUpdate(DateTime.Now);
             crlGen.SetNextUpdate(DateTime.Now.AddYears(1));
@@ -41,32 +60,37 @@ namespace Test.Utility.Signing
                                false,
                                new CrlNumber(version));
 
+            if (revokedCertificate != null)
+            {
+                var bcRevokedCert = DotNetUtilities.FromX509Certificate(revokedCertificate);
+                crlGen.AddCrlEntry(bcRevokedCert.SerialNumber, DateTime.Now, CrlReason.PrivilegeWithdrawn);
+            }
+
             var random = new SecureRandom();
             var issuerPrivateKey = DotNetUtilities.GetKeyPair(issuerCert.PrivateKey).Private;
             var signatureFactory = new Asn1SignatureFactory(bcIssuerCert.SigAlgOid, issuerPrivateKey, random);
             var crl = crlGen.Generate(signatureFactory);
-
-            return new CertificateRevocationList()
-            {
-                Crl = crl,
-                IssuerCert = issuerCert,
-                CrlLocalPath = Path.Combine(crlLocalUri, $"{issuerCert.Subject}.crl")
-            };
+            return crl;
         }
 
-        private void ExportCrl(string filePath)
+        public void RevokeCertificate(X509Certificate2 revokedCertificate)
         {
-            var pemWriter = new PemWriter(new StreamWriter(File.Open(filePath, FileMode.Create)));
-            pemWriter.WriteObject(Crl);
-            pemWriter.Writer.Flush();
-            pemWriter.Writer.Close();
-
-            CrlLocalPath = filePath;
+            UpdateVersion();
+            Crl = CreateCrl(IssuerCert, Version, revokedCertificate);
+            ExportCrl();
         }
 
         public void ExportCrl()
         {
-            ExportCrl(CrlLocalPath);
+            var pemWriter = new PemWriter(new StreamWriter(File.Open(CrlLocalPath, FileMode.Create)));
+            pemWriter.WriteObject(Crl);
+            pemWriter.Writer.Flush();
+            pemWriter.Writer.Close();
+        }
+
+        private void UpdateVersion()
+        {
+            Version = Version?.Add(BigInteger.One) ?? BigInteger.One;
         }
 #else
         public static CertificateRevocationList CreateCrl(X509Certificate2 certCA, string crlLocalUri)
@@ -74,8 +98,8 @@ namespace Test.Utility.Signing
             throw new NotImplementedException();
         }
 
-        public void ExportCrl(string filePath)
-        { 
+        public void RevokeCertificate(X509Certificate2 revokedCertificate)
+        {
             throw new NotImplementedException();
         }
 

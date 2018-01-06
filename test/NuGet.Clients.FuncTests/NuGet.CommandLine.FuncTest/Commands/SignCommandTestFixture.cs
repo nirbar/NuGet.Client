@@ -27,11 +27,14 @@ namespace NuGet.CommandLine.FuncTest.Commands
         private TrustedTestCert<TestCertificate> _trustedTestCertExpired;
         private TrustedTestCert<TestCertificate> _trustedTestCertNotYetValid;
         private TrustedCertificateChain _trustedTestCertChain;
+        private TrustedCertificateChain _trustedTestCertChainWithRevoked;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
-        private string _nugetExePath;
         private MockServer _crlServer;
+        private bool _crlServerRunning;
+        private object _crlServerRunningLock = new object();
         private TestDirectory _testDirectory;
+        private string _nugetExePath;
 
         public TrustedTestCert<TestCertificate> TrustedTestCertificate
         {
@@ -125,43 +128,26 @@ namespace NuGet.CommandLine.FuncTest.Commands
             }
         }
 
-        private void SetUpCrlDistributionPoint()
+        public TrustedTestCert<TestCertificate> RevokedTestCertificateWithChain
         {
-            CrlServer.Get.Add(
-                "/",
-                request =>
+            get
+            {
+                if (_trustedTestCertChainWithRevoked == null)
                 {
-                    var urlSplits = request.RawUrl.Split('/').Where(s => !string.IsNullOrEmpty(s)).ToArray();
-                    if (urlSplits.Length != 2 || !urlSplits[1].EndsWith(".crl"))
+                    var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength, CrlServer.Uri, TestDirectory.Path);
+
+                    _trustedTestCertChainWithRevoked = new TrustedCertificateChain()
                     {
-                        return new Action<HttpListenerResponse>(response =>
-                        {
-                            response.StatusCode = 404;
-                        });
-                    }
-                    else
-                    {
-                        var crlName = urlSplits[1];
-                        var crlPath = Path.Combine(TestDirectory, crlName);
-                        if (File.Exists(crlPath))
-                        {
-                            return new Action<HttpListenerResponse>(response =>
-                            {
-                                response.ContentType = "application/pkix-crl";
-                                response.StatusCode = 200;
-                                var content = File.ReadAllBytes(crlPath);
-                                MockServer.SetResponseContent(response, content);
-                            });
-                        }
-                        else
-                        {
-                            return new Action<HttpListenerResponse>(response =>
-                            {
-                                response.StatusCode = 404;
-                            });
-                        }
-                    }
-                });
+                        Certificates = certChain
+                    };
+
+                    _trustedTestCertChainWithRevoked.Root.Source.Crl.RevokeCertificate(_trustedTestCertChainWithRevoked.Leaf.Source.Cert);
+
+                    SetUpCrlDistributionPoint();
+                }
+
+                return _trustedTestCertChainWithRevoked.Leaf;
+            }
         }
 
         public IList<ISignatureVerificationProvider> TrustProviders
@@ -234,6 +220,54 @@ namespace NuGet.CommandLine.FuncTest.Commands
         }
 
         public string Timestamper => _timestamper;
+
+        private void SetUpCrlDistributionPoint()
+        {
+            lock (_crlServerRunningLock)
+            {
+                if (!_crlServerRunning)
+                {
+                    CrlServer.Get.Add(
+                        "/",
+                        request =>
+                        {
+                            var urlSplits = request.RawUrl.Split('/').Where(s => !string.IsNullOrEmpty(s)).ToArray();
+                            if (urlSplits.Length != 2 || !urlSplits[1].EndsWith(".crl"))
+                            {
+                                return new Action<HttpListenerResponse>(response =>
+                                {
+                                    response.StatusCode = 404;
+                                });
+                            }
+                            else
+                            {
+                                var crlName = urlSplits[1];
+                                var crlPath = Path.Combine(TestDirectory, crlName);
+                                if (File.Exists(crlPath))
+                                {
+                                    return new Action<HttpListenerResponse>(response =>
+                                    {
+                                        response.ContentType = "application/pkix-crl";
+                                        response.StatusCode = 200;
+                                        var content = File.ReadAllBytes(crlPath);
+                                        MockServer.SetResponseContent(response, content);
+                                    });
+                                }
+                                else
+                                {
+                                    return new Action<HttpListenerResponse>(response =>
+                                    {
+                                        response.StatusCode = 404;
+                                    });
+                                }
+                            }
+                        });
+
+                    CrlServer.Start();
+                    _crlServerRunning = true;
+                }
+            }
+        }
 
         public void Dispose()
         {
