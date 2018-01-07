@@ -20,7 +20,8 @@ namespace NuGet.CommandLine.FuncTest.Commands
     public class SignCommandTestFixture : IDisposable
     {
         private const string _timestamper = "http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer";
-        private const int _trustedCertChainLength = 3;
+        private const int _validCertChainLength = 3;
+        private const int _invalidCertChainLength = 2;
 
         private TrustedTestCert<TestCertificate> _trustedTestCert;
         private TrustedTestCert<TestCertificate> _trustedTestCertWithInvalidEku;
@@ -28,6 +29,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
         private TrustedTestCert<TestCertificate> _trustedTestCertNotYetValid;
         private TrustedCertificateChain _trustedTestCertChain;
         private TrustedCertificateChain _revokedTestCertChain;
+        private TrustedCertificateChain _revocationUnknownTestCertChain;
         private IList<ISignatureVerificationProvider> _trustProviders;
         private SigningSpecifications _signingSpecifications;
         private MockServer _crlServer;
@@ -113,7 +115,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
             {
                 if (_trustedTestCertChain == null)
                 {
-                    var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength, CrlServer.Uri, TestDirectory.Path);
+                    var certChain = SigningTestUtility.GenerateCertificateChain(_validCertChainLength, CrlServer.Uri, TestDirectory.Path);
 
                     _trustedTestCertChain = new TrustedCertificateChain()
                     {
@@ -133,14 +135,15 @@ namespace NuGet.CommandLine.FuncTest.Commands
             {
                 if (_revokedTestCertChain == null)
                 {
-                    var certChain = SigningTestUtility.GenerateCertificateChain(_trustedCertChainLength, CrlServer.Uri, TestDirectory.Path);
+                    var certChain = SigningTestUtility.GenerateCertificateChain(_invalidCertChainLength, CrlServer.Uri, TestDirectory.Path);
 
                     _revokedTestCertChain = new TrustedCertificateChain()
                     {
                         Certificates = certChain
                     };
 
-                    _revokedTestCertChain.Certificates[1].Source.Crl.RevokeCertificate(_revokedTestCertChain.Leaf.Source.Cert);
+                    // mark leaf certificate as revoked
+                    _revokedTestCertChain.Certificates[0].Source.Crl.RevokeCertificate(_revokedTestCertChain.Leaf.Source.Cert);
 
                     SetUpCrlDistributionPoint();
                 }
@@ -148,6 +151,34 @@ namespace NuGet.CommandLine.FuncTest.Commands
                 return _revokedTestCertChain.Leaf;
             }
         }
+
+        public TrustedTestCert<TestCertificate> RevocationUnknownTestCertificateWithChain
+        {
+            get
+            {
+                if (_revocationUnknownTestCertChain == null)
+                {
+                    var certChain = SigningTestUtility.GenerateCertificateChain(_invalidCertChainLength, CrlServer.Uri, TestDirectory.Path);
+
+                    _revocationUnknownTestCertChain = new TrustedCertificateChain()
+                    {
+                        Certificates = certChain
+                    };
+
+                    // delete crl to make revocation status unknown
+                    var crlPath = _revocationUnknownTestCertChain.Certificates[0].Source.Crl.CrlLocalPath;
+                    if (File.Exists(crlPath))
+                    {
+                        File.Delete(crlPath);
+                    }
+
+                    SetUpCrlDistributionPoint();
+                }
+
+                return _revocationUnknownTestCertChain.Leaf;
+            }
+        }
+
 
         public IList<ISignatureVerificationProvider> TrustProviders
         {
@@ -276,6 +307,7 @@ namespace NuGet.CommandLine.FuncTest.Commands
             _trustedTestCertNotYetValid?.Dispose();
             _trustedTestCertChain?.Dispose();
             _revokedTestCertChain?.Dispose();
+            _revocationUnknownTestCertChain?.Dispose();
             _crlServer?.Stop();
             _crlServer?.Dispose();
             _testDirectory?.Dispose();
