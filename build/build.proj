@@ -500,7 +500,7 @@
       <!-- Build exe commands -->
       <TestResultsXunit Condition=" '$(TestResultsFileName)' != '' ">$(TestResultsDirectory)$(TestResultsFileName)-xunit.$(TestResultOutputFormat)</TestResultsXunit>
       <TestResultsVsts Condition=" '$(TestResultsFileName)' != '' ">$(TestResultsDirectory)$(TestResultsFileName)-vsts.$(TestResultOutputFormat)</TestResultsVsts>
-      <VsTestLogger>--TestAdapterPath:. --logger:xunit;LogFilePath=$(TestResultsVsts)</VsTestLogger>
+      <VsTestLogger>--TestAdapterPath:. --logger:xunit;LogFilePath=$(TestResultsVsts) --diag</VsTestLogger>
       <VSTestCommand>$(DotnetExePath) vstest $(CoreInputTestAssembliesSpaced) $(VsTestLogger)</VSTestCommand>
       <DesktopTestCommand>$(XunitConsoleExePath) $(DesktopInputTestAssembliesSpaced)</DesktopTestCommand>
       <DesktopTestCommand Condition=" '$(TestResultsXunit)' != '' ">$(DesktopTestCommand) -$(TestResultOutputFormat) $(TestResultsXunit)</DesktopTestCommand>
@@ -513,6 +513,7 @@
       <Output TaskParameter="ExitCode" PropertyName="DesktopTestErrorCode"/>
     </Exec>
 
+    <Message Text="$(VSTestCommand)" Condition=" '$(CoreInputTestAssemblies)' != '' AND '$(SkipCoreTests)' != 'true' " />
     <!-- VSTest/NETCore -->
     <Exec Command="$(VSTestCommand)"
           ContinueOnError="true"
