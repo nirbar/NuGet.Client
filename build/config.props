@@ -24,7 +24,7 @@
     <FluentAssertionsVersion>4.19.4</FluentAssertionsVersion>
     <MicrosoftBuildPackageVersion>15.1.1012</MicrosoftBuildPackageVersion>
     <XuitXmlTestLoggerVersion Condition="'$(IsXPlat)' != 'true'">2.0.0</XuitXmlTestLoggerVersion>
-    <XuitXmlTestLoggerVersion Condition="'$(IsXPlat)' == 'true'">1.1.0-post-rtm</XuitXmlTestLoggerVersion>
+    <XuitXmlTestLoggerVersion Condition="'$(IsXPlat)' == 'true'">1.0.3-pre-rtm</XuitXmlTestLoggerVersion>
   </PropertyGroup>
 
   <!-- Config -->
