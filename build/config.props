@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0">
+  <PropertyGroup>
+    <IsXPlat>false</IsXPlat>
+    <IsXPlat Condition=" $(MSBuildProjectFullPath.StartsWith('/')) == 'true' OR $(MSBuildProjectFullPath.StartsWith('\')) == 'true' ">true</IsXPlat>
+  </PropertyGroup>
   <!-- Version -->
   <PropertyGroup>
     <SemanticVersion Condition=" '$(SemanticVersion)' == '' ">4.6.0</SemanticVersion>
